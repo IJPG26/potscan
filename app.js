@@ -125,6 +125,37 @@ const qrSvg = id => {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+// Lowercase, accents removed: "Café" -> "cafe".
+const norm = s => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+// localStorage can be blocked; it's only for conveniences, so failures are ignored.
+const pref = (key, value) => {
+  try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch {}
+};
+
+// Text as " word word word" so a search word can be matched at the start of any word.
+const words = s => norm(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+const hay = parts => ' ' + words(parts.join(' ')).join(' ');
+
+// Every search word must start a word somewhere ("cord" finds "Cordless"; "1" doesn't match "0001").
+// An item must also match at least one word itself, so "garage drill" finds drills in garage totes,
+// but "garage" alone doesn't list every item there.
+function search(query, totes, items) {
+  const ws = words(query);
+  const has = (text, w) => text.includes(' ' + w);
+  const toteText = new Map(totes.map(t =>
+    [t.id, hay([t.id, t.name, t.location, t.description, t.keywords])]));
+  const byId = new Map(totes.map(t => [t.id, t]));
+  return {
+    totes: totes.filter(t => ws.every(w => has(toteText.get(t.id), w))),
+    items: items.filter(it => {
+      const own = hay([it.name, it.description]);
+      const both = own + (toteText.get(it.toteId) ?? '');
+      return ws.some(w => has(own, w)) && ws.every(w => has(both, w));
+    }).map(it => ({ ...it, tote: byId.get(it.toteId) })),
+  };
+}
+
 // ---------- Photos ----------
 
 // Resize so the long edge is at most `max` px, as JPEG (CHARTER §6.5).
@@ -168,9 +199,12 @@ function newestPhotos(photos) {
   return newest;
 }
 
-// Object URLs for the current screen; released on every screen change.
-let urls = [];
-const blobUrl = blob => { const u = URL.createObjectURL(blob); urls.push(u); return u; };
+// Object URLs for the current screen, one per blob; released on every screen change.
+let urls = new Map();
+const blobUrl = blob => {
+  if (!urls.has(blob)) urls.set(blob, URL.createObjectURL(blob));
+  return urls.get(blob);
+};
 
 const thumbHtml = photo => photo
   ? `<img class="thumb" src="${blobUrl(photo.thumb)}" alt="">`
@@ -246,8 +280,8 @@ let stopScan = null;         // turns the camera off when leaving the scan scree
 
 function route() {
   urls.forEach(URL.revokeObjectURL);
-  urls = [];
-  const h = location.hash;
+  urls = new Map();
+  const h = location.hash.split('?')[0]; // "#/?q=drill" is the home screen with a search
   if (h === '#/scan') return void showScan(); // keeps running while scanning, so don't wait on it
   if (h === '#/new') return nextId().then(id => location.replace('#/tote/' + id));
   const l = h.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
@@ -278,7 +312,6 @@ addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 
 async function showHome() {
   const [totes, items, photos] = await Promise.all([allTotes(), allItems(), allPhotos()]);
-  totes.sort((a, b) => b.updatedAt - a.updatedAt);
   const newest = newestPhotos(photos);
   const byTote = {};
   for (const it of items) (byTote[it.toteId] ||= []).push(it);
@@ -286,8 +319,28 @@ async function showHome() {
   const thumbFor = t => newest[t.id] ||
     (byTote[t.id] || []).map(it => newest[it.id]).filter(Boolean).sort((a, b) => b.takenAt - a.takenAt)[0];
 
+  const toteRow = t => `
+    <li><a href="#/tote/${esc(t.id)}">
+      ${thumbHtml(thumbFor(t))}
+      <span><strong>${esc(t.name)}</strong><br>
+      <small>#${esc(t.id)}${t.location ? ' · ' + esc(t.location) : ''} · ${plural((byTote[t.id] || []).length, 'item')}</small></span>
+    </a></li>`;
+  const itemRow = it => `
+    <li><a href="#/tote/${esc(it.toteId)}">
+      ${thumbHtml(newest[it.id])}
+      <span><strong>${esc(it.name)}</strong>${it.quantity !== 1 ? ` <span class="muted">×${esc(it.quantity)}</span>` : ''}<br>
+      <small>in ${esc(it.tote?.name ?? '?')} #${esc(it.toteId)}${it.tote?.location ? ' · 📍 ' + esc(it.tote.location) : ''}</small></span>
+    </a></li>`;
+
+  const q = new URLSearchParams(location.hash.split('?')[1]).get('q') || '';
+  const sort = pref('sort') === 'name' ? 'name' : 'recent';
+
   app.innerHTML = `
     <h1>PotScan</h1>
+    <input type="search" id="q" value="${esc(q)}" placeholder="🔍 Search items or totes"
+           enterkeyhint="search" autocomplete="off" aria-label="Search items or totes">
+    <div id="results"></div>
+    <div id="rest">
     ${'BarcodeDetector' in window ? '<a class="btn primary" href="#/scan">Scan a label</a>' : ''}
     <a class="btn primary" href="#/new">+ Add a new tote</a>
     <form id="open">
@@ -300,14 +353,50 @@ async function showHome() {
     </form>
     <a class="btn" href="#/labels">Print labels</a>
     <h2>My Totes <span class="muted">(${totes.length})</span></h2>
-    ${totes.length ? `<ul class="list">${totes.map(t => `
-      <li><a href="#/tote/${esc(t.id)}">
-        ${thumbHtml(thumbFor(t))}
-        <span><strong>${esc(t.name)}</strong><br>
-        <small>#${esc(t.id)}${t.location ? ' · ' + esc(t.location) : ''} · ${plural((byTote[t.id] || []).length, 'item')}</small></span>
-      </a></li>`).join('')}</ul>`
+    ${totes.length ? `
+      <div class="row sort" role="group" aria-label="Sort totes">
+        <button type="button" data-sort="recent">Recent</button>
+        <button type="button" data-sort="name">A–Z</button>
+      </div>
+      <ul class="list" id="totes"></ul>`
       : '<p class="muted">No totes yet. Tap “Add a new tote” to start.</p>'}
+    </div>
   `;
+
+  const listEl = app.querySelector('#totes');
+  const renderList = sort => {
+    if (!listEl) return;
+    for (const b of app.querySelectorAll('[data-sort]')) b.setAttribute('aria-pressed', b.dataset.sort === sort);
+    const sorted = [...totes].sort(sort === 'name'
+      ? (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })
+      : (a, b) => b.updatedAt - a.updatedAt);
+    listEl.innerHTML = sorted.map(toteRow).join('');
+  };
+  for (const b of app.querySelectorAll('[data-sort]')) b.onclick = () => { pref('sort', b.dataset.sort); renderList(b.dataset.sort); };
+  renderList(sort);
+
+  const input = app.querySelector('#q');
+  const resultsEl = app.querySelector('#results');
+  const restEl = app.querySelector('#rest');
+  const renderResults = () => {
+    const query = input.value.trim();
+    // Keep the search in the address, so Back from a result returns to it (replaceState fires no hashchange).
+    history.replaceState(null, '', query ? '#/?q=' + encodeURIComponent(query) : '#/');
+    here = location.hash;
+    restEl.hidden = !!query;
+    if (!query) return void (resultsEl.innerHTML = '');
+    const r = search(query, totes, items);
+    resultsEl.innerHTML = !r.items.length && !r.totes.length
+      ? `<p class="muted">Nothing found for “${esc(query)}”.</p>`
+      : (r.items.length ? `<h2>Items <span class="muted">(${r.items.length})</span></h2>
+           <ul class="list">${r.items.map(itemRow).join('')}</ul>` : '') +
+        (r.totes.length ? `<h2>Totes <span class="muted">(${r.totes.length})</span></h2>
+           <ul class="list">${r.totes.map(toteRow).join('')}</ul>` : '');
+  };
+  input.oninput = renderResults;
+  input.onkeydown = e => { if (e.key === 'Enter') input.blur(); }; // hides the keyboard to show results
+  if (q) renderResults();
+
   app.querySelector('#open').onsubmit = e => {
     e.preventDefault();
     const id = padId(app.querySelector('#num').value);

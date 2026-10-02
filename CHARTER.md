@@ -203,11 +203,16 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Object URLs are created per screen and revoked on every screen change.
 
 ### 6.6 Search and list (M4)
-- Load all totes and items (not photos) into memory and filter as the user types. At this scale, no index is needed.
-- Match totes on `id`, `name`, `location`, `description`, `keywords`. Match items on `name` and `description`.
-- **Item results show the item's thumbnail, name and quantity, plus "in <tote name> #0012 · <tote location>"**, and open the tote page. Tote results show as in My Totes.
-- Case-insensitive and **accent-insensitive**: `s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()`. Every word typed must match (so "blue drill" finds "Cordless drill, blue Makita").
-- Tote list sort: by name (A–Z, `localeCompare`) or date updated (newest first). Remember the choice in `localStorage`.
+- The search box is the first thing on Home. Totes and items (not photos) are loaded into memory and filtered as the user types. At this scale, no index is needed. While searching, results replace the rest of Home.
+- Match totes on `id`, `name`, `location`, `description`, `keywords`. Match items on `name` and `description`, plus their tote's fields.
+- Rules (function `search` in `app.js`):
+  - Case-insensitive and **accent-insensitive** (`normalize('NFD')`, marks removed).
+  - **Every search word must match the start of a word**: "cord" finds "Cordless" and "Extension cord", "ill" finds nothing, and "1" doesn't match inside "0001".
+  - An item must match at least one word **itself**. So "garage drill" finds drills in garage totes, but "garage" alone lists the garage totes, not every item in them.
+- **Item results show the item's thumbnail, name and quantity, plus "in <tote name> #0012 · 📍 <tote location>"**, and open the tote page. Tote results show as in My Totes. Items are listed first.
+- The query is kept in the address (`#/?q=drill`, via `replaceState`), so Back from a result returns to the same search.
+- Tote list sort: **Recent** (date updated, newest first) or **A–Z** (`localeCompare` with numeric ordering). The choice is remembered in `localStorage`.
+- Tested with 15 search cases (single words, multiple words, tote-only words, accents, capitals, punctuation, no results).
 
 ### 6.7 Offline and updates (M5)
 - The service worker pre-caches the app shell under a versioned cache name (`potscan-v1`). Serve cache-first and delete old caches on `activate`.
@@ -259,8 +264,8 @@ Three or four full-screen cards, skippable, reachable again from Help:
 |---|---|---|
 | M1 | Skeleton | ✅ Hash router, IndexedDB, create/view/edit a record by number |
 | M2 | Scan | ✅ Lens test passed; backup scanner with "found" animation; manual entry; built-in label printing |
-| M3 | Photos and items | ✅ in code, awaiting on-phone test: tote and item photos, compression, thumbnails; items inside totes with Save & add another |
-| M4 | Search and list | Search across totes and items as you type; item results show tote and location; both sort orders |
+| M3 | Photos and items | ✅ Tote and item photos, compression, thumbnails; items inside totes with Save & add another. Passed on-phone test. |
+| M4 | Search and list | ✅ in code, awaiting on-phone test: search across totes and items as you type; item results show tote and location; Recent / A–Z sort |
 | M5 | Offline and install | Caching service worker with update prompt; works in airplane mode |
 | M6 | Backup | Export, share, merge-import, reminder |
 | M7 | Polish | First-run guide, wording, any feedback from the father |
@@ -271,11 +276,16 @@ Three or four full-screen cards, skippable, reachable again from Help:
 - [ ] Create a test tote, scan its label with Lens and tap the link
 - [ ] The test tote opens **with its data** → Lens stays the main path
 
-**On-device test checklist (M3)**
-- [ ] 📷 Take photo opens the rear camera; the photo saves
-- [ ] Portrait photos display the right way up
-- [ ] 🖼 From gallery accepts several photos at once
-- [ ] New item: take photo first, then name it, Save & add another
+**On-device test checklist (M3)**: passed
+- [x] 📷 Take photo opens the rear camera; the photo saves
+- [x] Portrait photos display the right way up
+- [x] 🖼 From gallery accepts several photos at once
+- [x] New item: take photo first, then name it, Save & add another
+
+**On-device test checklist (M4)**
+- [ ] Typing an item name shows it with its tote and location
+- [ ] Tapping a result opens the tote; the back gesture returns to the same search
+- [ ] Recent / A–Z sort, and the choice is remembered after closing the app
 
 **On-device test checklist (M8)**
 - [ ] Lens scan in normal and dim light
