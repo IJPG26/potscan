@@ -96,8 +96,9 @@ One object store, `pots`, keyed by `id`. Photos sit in their own store so the li
 {
   id: "p_<random>",
   potId: "0012",
-  takenAt: 1727827200000,  // capture time, used for the timeline
-  blob: Blob              // compressed JPEG
+  takenAt: 1727827200000,  // capture time (file.lastModified), used for the timeline
+  blob: Blob,             // compressed JPEG, long edge ≤ 1280 px
+  thumb: Blob             // JPEG, long edge ≤ 240 px, for the My Pots list
 }
 
 // store "meta": { key: "lastBackupAt", ... }, { key: "seenGuide", ... }
@@ -182,7 +183,10 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Compress on save. Resize so the long edge is at most **1280 px**, then `canvas.toBlob('image/jpeg', 0.7)`. Target ~150–250 KB per photo.
 - Decode with `createImageBitmap(file, { imageOrientation: 'from-image' })` so portrait shots aren't saved sideways.
 - Capture with `<input type="file" accept="image/*" capture="environment">`, which opens the rear camera directly. Also allow picking from the gallery.
-- Timeline: photos sorted by `takenAt`, newest first, each with its date. The newest photo is the list thumbnail.
+- Timeline: photos sorted by `takenAt`, newest first, each with its date and "Day N since planting" when a planting date is set. The newest photo's `thumb` is the list thumbnail. Tapping a photo opens it full screen (`<dialog>`) with a Delete option.
+- Photos can be added only after the pot's first save, so a pot that's never saved can't leave orphan photos. Adding photos redraws only the photo area, so unsaved form edits stay. Adding a photo bumps the pot's `updatedAt`.
+- Deleting a pot deletes its photos in the same transaction.
+- Measured in testing: a 5.9 MB, 4000×3000 photo was stored at 122 KB plus a 5 KB thumbnail.
 - Create thumbnails with `URL.createObjectURL` and revoke them when leaving a screen.
 
 ### 6.6 Search and list

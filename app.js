@@ -27,7 +27,26 @@ async function tx(store, mode, fn) {
 const getPot = id => tx('pots', 'readonly', s => s.get(id));
 const allPots = () => tx('pots', 'readonly', s => s.getAll());
 const putPot = pot => tx('pots', 'readwrite', s => s.put(pot));
-const deletePot = id => tx('pots', 'readwrite', s => s.delete(id)); // M3: also delete the pot's photos
+const allPhotos = () => tx('photos', 'readonly', s => s.getAll());
+const potPhotos = potId => tx('photos', 'readonly', s => s.index('potId').getAll(potId));
+const putPhoto = photo => tx('photos', 'readwrite', s => s.put(photo));
+const deletePhoto = id => tx('photos', 'readwrite', s => s.delete(id));
+
+// Deletes the pot and all its photos in one transaction.
+async function deletePot(id) {
+  const db = await DB;
+  return new Promise((ok, fail) => {
+    const t = db.transaction(['pots', 'photos'], 'readwrite');
+    const photos = t.objectStore('photos');
+    t.objectStore('pots').delete(id);
+    photos.index('potId').openKeyCursor(IDBKeyRange.only(id)).onsuccess = e => {
+      const c = e.target.result;
+      if (c) { photos.delete(c.primaryKey); c.continue(); }
+    };
+    t.oncomplete = () => ok();
+    t.onerror = () => fail(t.error);
+  });
+}
 
 navigator.storage?.persist?.();
 navigator.serviceWorker?.register('sw.js');
@@ -61,6 +80,35 @@ async function nextId() {
   return padId(String(max + 1));
 }
 
+// ---------- Photos ----------
+
+// Resize so the long edge is at most `max` px, as JPEG (CHARTER §6.5).
+async function toJpeg(bitmap, max, quality) {
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const c = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+  c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+  return c.convertToBlob({ type: 'image/jpeg', quality });
+}
+
+async function addPhoto(potId, file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const [blob, thumb] = await Promise.all([toJpeg(bitmap, 1280, 0.7), toJpeg(bitmap, 240, 0.7)]);
+  bitmap.close();
+  await putPhoto({
+    id: 'p_' + crypto.randomUUID(),
+    potId,
+    takenAt: file.lastModified || Date.now(), // camera shots: now; gallery picks: roughly when taken
+    blob,
+    thumb,
+  });
+}
+
+// Object URLs for the current screen; released on every screen change.
+let urls = [];
+const blobUrl = blob => { const u = URL.createObjectURL(blob); urls.push(u); return u; };
+
+const fmtDate = ms => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
 const qrSvg = id => {
   const qr = qrcode(0, 'Q');
   qr.addData(LABEL_BASE + '#/pot/' + id);
@@ -75,6 +123,8 @@ let here = location.hash;
 let stopScan = null;         // turns the camera off when leaving the scan screen
 
 function route() {
+  urls.forEach(URL.revokeObjectURL);
+  urls = [];
   if (location.hash === '#/scan') return void showScan(); // keeps running while scanning, so don't wait on it
   if (location.hash === '#/new') return nextId().then(id => location.replace('#/pot/' + id));
   const l = location.hash.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
@@ -102,7 +152,10 @@ addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 // ---------- Screens ----------
 
 async function showHome() {
-  const pots = (await allPots()).sort((a, b) => b.updatedAt - a.updatedAt);
+  const [pots, photos] = await Promise.all([allPots(), allPhotos()]);
+  pots.sort((a, b) => b.updatedAt - a.updatedAt);
+  const newest = {}; // potId -> newest photo, used as the list thumbnail
+  for (const ph of photos) if (!newest[ph.potId] || ph.takenAt > newest[ph.potId].takenAt) newest[ph.potId] = ph;
   app.innerHTML = `
     <h1>PotScan</h1>
     ${'BarcodeDetector' in window ? '<a class="btn primary" href="#/scan">Scan a label</a>' : ''}
@@ -119,8 +172,9 @@ async function showHome() {
     <h2>My Pots <span class="muted">(${pots.length})</span></h2>
     ${pots.length ? `<ul class="list">${pots.map(p => `
       <li><a href="#/pot/${esc(p.id)}">
-        <strong>${esc(p.name)}</strong><br>
-        <small>#${esc(p.id)}${p.location ? ' · ' + esc(p.location) : ''}</small>
+        ${newest[p.id] ? `<img class="thumb" src="${blobUrl(newest[p.id].thumb)}" alt="">` : '<span class="thumb"></span>'}
+        <span><strong>${esc(p.name)}</strong><br>
+        <small>#${esc(p.id)}${p.location ? ' · ' + esc(p.location) : ''}</small></span>
       </a></li>`).join('')}</ul>`
       : '<p class="muted">No pots yet. Tap “Add a new pot” to start.</p>'}
   `;
@@ -251,8 +305,25 @@ async function showPot(id) {
       <button class="primary">Save</button>
       <p class="msg" id="msg"></p>
     </form>
-    ${pot ? `<a class="btn" href="#/labels/${esc(id)}">Print label</a>
-             <button class="danger" id="del">Delete this pot</button>` : ''}
+    <h2>Photos</h2>
+    ${pot ? `
+      <div class="row">
+        <label class="btn primary">📷 Take photo
+          <input type="file" accept="image/*" capture="environment" hidden></label>
+        <label class="btn">🖼 From gallery
+          <input type="file" accept="image/*" multiple hidden></label>
+      </div>
+      <p class="msg" id="photomsg"></p>
+      <div id="photos"></div>
+      <dialog id="viewer">
+        <img alt="">
+        <p class="muted"></p>
+        <button class="danger" id="delphoto">Delete photo</button>
+        <button id="closeview">Close</button>
+      </dialog>
+      <a class="btn" href="#/labels/${esc(id)}">Print label</a>
+      <button class="danger" id="del">Delete this pot</button>`
+    : '<p class="muted">Save the pot first, then you can add photos.</p>'}
   `;
 
   const form = app.querySelector('#pot');
@@ -279,13 +350,67 @@ async function showPot(id) {
     app.querySelector('#msg').textContent = 'Saved ✓';
   };
 
-  const del = app.querySelector('#del');
-  if (del) del.onclick = async () => {
-    if (!confirm(`Delete ${pot.name} (#${id})? This can't be undone.`)) return;
+  if (!pot) return;
+  renderPhotos(pot);
+
+  const photoMsg = app.querySelector('#photomsg');
+  for (const input of app.querySelectorAll('input[type=file]')) input.onchange = async () => {
+    const files = [...input.files];
+    input.value = '';
+    if (!files.length) return;
+    let failed = 0;
+    for (const [i, file] of files.entries()) {
+      photoMsg.textContent = `Saving photo${files.length > 1 ? ` ${i + 1} of ${files.length}` : ''}…`;
+      try { await addPhoto(id, file); } catch { failed++; }
+    }
+    // Bump the pot so it moves up in "date updated" order.
+    const fresh = await getPot(id);
+    if (fresh) await putPot({ ...fresh, updatedAt: Date.now() });
+    photoMsg.classList.toggle('bad', failed > 0);
+    photoMsg.textContent = failed ? `Couldn't read ${failed} photo${failed > 1 ? 's' : ''}. Try another.` : 'Photo saved ✓';
+    renderPhotos(pot);
+  };
+
+  app.querySelector('#del').onclick = async () => {
+    if (!confirm(`Delete ${pot.name} (#${id}) and all its photos? This can't be undone.`)) return;
     await deletePot(id);
     dirty = false;
     location.hash = '#/';
   };
+}
+
+// Photo timeline for a pot, newest first. Only redraws the photo area, so unsaved form edits stay.
+async function renderPhotos(pot) {
+  const photos = (await potPhotos(pot.id)).sort((a, b) => b.takenAt - a.takenAt);
+  const planted = pot.datePlanted ? Date.parse(pot.datePlanted + 'T00:00') : NaN; // local midnight
+  const caption = ph => {
+    const day = Math.floor((ph.takenAt - planted) / 864e5);
+    return fmtDate(ph.takenAt) + (day >= 0 ? ` · Day ${day} since planting` : '');
+  };
+  const box = app.querySelector('#photos');
+  if (!box) return; // left the screen meanwhile
+  box.innerHTML = photos.length
+    ? photos.map(ph => `
+        <figure class="photo" data-id="${ph.id}">
+          <img src="${blobUrl(ph.blob)}" alt="" loading="lazy">
+          <figcaption>${caption(ph)}</figcaption>
+        </figure>`).join('')
+    : '<p class="muted">No photos yet.</p>';
+
+  const viewer = app.querySelector('#viewer');
+  for (const fig of box.querySelectorAll('.photo')) fig.onclick = () => {
+    const ph = photos.find(p => p.id === fig.dataset.id);
+    viewer.querySelector('img').src = fig.querySelector('img').src;
+    viewer.querySelector('p').textContent = caption(ph);
+    viewer.querySelector('#delphoto').onclick = async () => {
+      if (!confirm('Delete this photo?')) return;
+      await deletePhoto(ph.id);
+      viewer.close();
+      renderPhotos(pot);
+    };
+    viewer.showModal();
+  };
+  viewer.querySelector('#closeview').onclick = () => viewer.close();
 }
 
 route();
