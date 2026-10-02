@@ -427,7 +427,9 @@ addEventListener('hashchange', () => {
   dirty = false;
   here = location.hash;
   stopScan?.();
-  if (document.startViewTransition) document.startViewTransition(route); // animated screen change
+  // Animated screen change. Chrome skips the animation (but still changes screen) if another starts
+  // first or the app is in the background; that rejection is expected, so it's ignored.
+  if (document.startViewTransition) document.startViewTransition(route).ready.catch(() => {});
   else route();
 });
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
@@ -537,9 +539,9 @@ async function showBackup() {
   const [totes, items, photos, lastBackup] = await Promise.all([allTotes(), allItems(), allPhotos(), getMeta('lastBackupAt')]);
   const stamp = new Date().toISOString().slice(0, 10);
   const name = `potscan-backup-${stamp}.json`;
-  // Android may refuse to share .json files; .txt with the same contents is the fallback.
-  const shareFile = ['application/json', 'text/plain'].map((type, i) =>
-    new File([''], i ? name.replace(/\.json$/, '.txt') : name, { type })).find(f => navigator.canShare?.({ files: [f] }));
+  // Shared as .txt: Android's share menu refuses .json even when canShare() says yes. Restore reads both.
+  const shareFile = new File([''], name.replace(/\.json$/, '.txt'), { type: 'text/plain' });
+  const canShareFile = !!navigator.canShare?.({ files: [shareFile] });
 
   app.innerHTML = `
     <a class="btn" href="#/">← Back to My Totes</a>
@@ -550,8 +552,9 @@ async function showBackup() {
       Last backup: <strong>${lastBackup ? `${daysAgo(lastBackup)} (${fmtDate(lastBackup)})` : 'never'}</strong><br>
       <span class="muted">On this phone: ${plural(totes.length, 'tote')} · ${plural(items.length, 'item')} · ${plural(photos.length, 'photo')}</span>
     </p>
-    ${shareFile ? '<button class="primary" id="share">Save backup to Google Drive…</button>' : ''}
-    <button class="${shareFile ? '' : 'primary'}" id="download">Download backup file</button>
+    ${canShareFile ? '<button class="primary" id="share">Save backup to Google Drive…</button>' : ''}
+    <button class="${canShareFile ? '' : 'primary'}" id="download">Download backup file</button>
+    <p class="muted">A downloaded file stays on this phone. For real safety, also copy it to Google Drive.</p>
     <p class="msg" id="msg"></p>
 
     <h2>Restore</h2>
@@ -575,7 +578,8 @@ async function showBackup() {
       await navigator.share({ files: [file], title: 'PotScan backup' });
       await done();
     } catch (e) {
-      say(msg, e.name === 'AbortError' ? 'Not saved. Try again when ready.' : 'Sharing didn\'t work. Use Download instead.', true);
+      say(msg, e.name === 'AbortError' ? 'Not saved. Try again when ready.'
+        : `Sharing didn't work (${e.name}). Use Download instead.`, true);
     }
   };
 
