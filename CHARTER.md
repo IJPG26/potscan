@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Project** | PotScan (working name; the name shown in the app can change any time). A personal clone of how ToteScan works. Do not use ToteScan's name, logo, screens or code. |
+| **Project** | **PotScan** (final name, chosen 2026-10-02: original, and fits the father's green thumb). A personal app modeled on how ToteScan works. Never use ToteScan's name, logo, screens or code. |
 | **Date** | 2026-10-02 (revised the same day: storage totes, not plant pots) |
 | **Owner / developer** | Darren |
 | **End user** | Darren's father, a non-technical user organizing storage totes |
@@ -238,13 +238,15 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Location field offers suggestions from existing locations (`<datalist>`) so spelling stays consistent.
 - Screen changes fade and slide (View Transitions). Turned off when the phone asks for reduced motion.
 
-### 6.9 First-run guide (M7)
-Three or four full-screen cards, skippable, reachable again from Help:
-1. "Stick a label on a tote."
-2. "Open **Google Lens**, point at the label, and tap the link." (Small print: "Not working? Open PotScan and tap **Scan**.")
-3. "Add what's inside: tap **+ Add item**, take a photo, type a name."
-4. "Lost something? Type it in the search box to see which tote it's in."
-5. "Tap **Backup** now and then to keep a copy safe."
+### 6.9 First-run guide (M7, `#/help`)
+Five full-screen cards: Next / Back buttons, swipe left or right, **Skip** (not on the last card), and dots showing progress. Shown automatically the first time Home opens (`meta.seenGuide`). A Lens link opened on first launch still goes straight to the tote. Reachable any time from **❓ How to use PotScan** on Home.
+1. 🏷️ **Label your totes:** Print labels → stick one on each tote; can share to Canva.
+2. 📷 **Open a tote:** Google Lens → point → tap the link (plus "Or tap Scan a label" where the in-app scanner is supported). Works without signal.
+3. 📦 **Add what's inside:** + Add item → photo → name → Save & add another.
+4. 🔍 **Find anything:** type in search; shows which tote and where it's kept.
+5. 💾 **Keep a backup:** totes live only on this phone; back up to Google Drive every week or two; never clear Chrome's "Cookies and site data".
+
+**Scroll:** new screens open at the top. Back returns to the previous scroll position (saved into `history.state` on every tap, restored after the screen renders).
 
 ---
 
@@ -277,7 +279,7 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | M4 | Search and list | ✅ Search across totes and items as you type; item results show tote and location; Recent / A–Z sort. Passed on-phone test. |
 | M5 | Offline and install | ✅ Caching service worker with update bar; works in airplane mode. Passed on-phone test. |
 | M6 | Backup | ✅ Export (share to Drive / download), merge-restore, reminder. Passed on-phone test (Drive sharing works as `.txt`). |
-| M7 | Polish | First-run guide, wording, any feedback from the father |
+| M7 | Polish | ✅ in code, awaiting on-phone test: first-run guide, Help button, scroll restore, label pictures (Share / Download PNG), final name PotScan |
 | M8 | Field test | Labels printed; tested on the father's phone; father demo |
 
 **Lens test.** Passed 2026-10-02 on Darren's Xiaomi with Chrome as default browser: Lens opened record 0001 with its data. Chrome's ⋮ menu shows "Install" (full app install). With Opera as default, links open in Opera, which has separate storage. Repeat on the father's phone during M8:
@@ -308,6 +310,10 @@ Three or four full-screen cards, skippable, reachable again from Help:
 - [ ] Tap a label: Share label opens the share menu (Canva, Gallery, Drive…)
 - [ ] Download all saves one PNG per label
 - [ ] A shared PNG, printed or shown on another screen, scans with Lens
+
+**On-device test checklist (M7)**
+- [ ] Guide: swipe and buttons work; Skip and "Start using PotScan" go Home; ❓ reopens it
+- [ ] Long tote list: open a tote far down, then Back returns to the same spot
 
 **On-device test checklist (M8)**
 - [ ] Lens scan in normal and dim light

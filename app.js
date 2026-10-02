@@ -423,13 +423,17 @@ const backupIsStale = last => !last || Date.now() - last > 14 * 864e5;
 let dirty = false;           // unsaved changes on a form
 let here = location.hash;
 let stopScan = null;         // turns the camera off when leaving the scan screen
+let screenListeners = new AbortController(); // per-screen listeners
 
 function route() {
   urls.forEach(URL.revokeObjectURL);
   urls = new Map();
+  screenListeners.abort(); // removes listeners the previous screen added with { signal: screenListeners.signal }
+  screenListeners = new AbortController();
   const h = location.hash.split('?')[0]; // "#/?q=drill" is the home screen with a search
   if (h === '#/scan') return void showScan(); // keeps running while scanning, so don't wait on it
   if (h === '#/backup') return showBackup();
+  if (h === '#/help') return showHelp();
   if (h === '#/new') return nextId().then(id => location.replace('#/tote/' + id));
   const l = h.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
   if (l) return showLabels(l[1], l[2] || l[1]);
@@ -450,16 +454,21 @@ addEventListener('hashchange', () => {
   dirty = false;
   here = location.hash;
   stopScan?.();
+  // New screens open at the top; Back returns to where you were (saved by the click handler below).
+  const go = async () => { await route(); scrollTo(0, history.state?.y ?? 0); };
   // Animated screen change. Chrome skips the animation (but still changes screen) if another starts
   // first or the app is in the background; that rejection is expected, so it's ignored.
-  if (document.startViewTransition) document.startViewTransition(route).ready.catch(() => {});
-  else route();
+  if (document.startViewTransition) document.startViewTransition(go).ready.catch(() => {});
+  else go();
 });
+// Every navigation starts with a tap, so remember this screen's scroll position just before it.
+addEventListener('click', () => history.replaceState({ y: scrollY }, ''), true);
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 
 // ---------- Screens ----------
 
 async function showHome() {
+  if (!(await getMeta('seenGuide'))) return location.replace('#/help'); // first launch
   const [totes, items, photos, lastBackup] = await Promise.all([allTotes(), allItems(), allPhotos(), getMeta('lastBackupAt')]);
   const newest = newestPhotos(photos);
   const byTote = {};
@@ -503,6 +512,7 @@ async function showHome() {
     <a class="btn" href="#/labels">Print labels</a>
     <a class="btn ${totes.length && backupIsStale(lastBackup) ? 'warn' : ''}" href="#/backup">
       💾 Backup · last: ${lastBackup ? daysAgo(lastBackup) : 'never'}</a>
+    <a class="btn" href="#/help">❓ How to use PotScan</a>
     <h2>My Totes <span class="muted">(${totes.length})</span></h2>
     ${totes.length ? `
       <div class="row sort" role="group" aria-label="Sort totes">
@@ -556,6 +566,58 @@ async function showHome() {
     if (id) location.hash = '#/tote/' + id;
     else alert('Please type the number printed on the label.');
   };
+}
+
+// First-run guide (CHARTER §6.9): one card at a time, swipe or tap Next. Shown once, then from Help.
+function showHelp() {
+  const cards = [
+    ['🏷️', 'Label your totes', 'Tap <b>Print labels</b> to make QR stickers and stick one on each tote. You can also share them to Canva.'],
+    ['📷', 'Open a tote', `Open <b>Google Lens</b>, point it at a label and tap the link.${
+      'BarcodeDetector' in window ? ' Or tap <b>Scan a label</b> in PotScan.' : ''} Works without signal.`],
+    ['📦', 'Add what\'s inside', 'On a tote, tap <b>+ Add item</b>. Take a photo, type a name, then <b>Save &amp; add another</b>.'],
+    ['🔍', 'Find anything', 'Type in the search box, like “drill”. PotScan shows <b>which tote</b> it\'s in and <b>where</b> that tote is kept.'],
+    ['💾', 'Keep a backup', 'Your totes live <b>only on this phone</b>. Tap <b>💾 Backup</b> every week or two and save to Google Drive. Never clear Chrome\'s “Cookies and site data”.'],
+  ];
+  let i = 0;
+  const finish = async () => { await setMeta('seenGuide', true); location.hash = '#/'; };
+  const to = n => {
+    if (n < 0) return;
+    if (n >= cards.length) return finish();
+    i = n;
+    if (document.startViewTransition) document.startViewTransition(render).ready.catch(() => {});
+    else render();
+  };
+  function render() {
+    const [icon, title, text] = cards[i];
+    const last = i === cards.length - 1;
+    app.innerHTML = `
+      <div class="guide">
+        ${last ? '' : '<button class="skip" id="skip">Skip</button>'}
+        <div class="guide-icon" aria-hidden="true">${icon}</div>
+        <h1>${title}</h1>
+        <p>${text}</p>
+        <div class="dots" aria-label="Step ${i + 1} of ${cards.length}">
+          ${cards.map((_, j) => `<span class="${j === i ? 'on' : ''}"></span>`).join('')}</div>
+        <button class="primary" id="next">${last ? 'Start using PotScan' : 'Next'}</button>
+        ${i ? '<button id="back">Back</button>' : ''}
+      </div>`;
+    app.querySelector('#next').onclick = () => to(i + 1);
+    const skip = app.querySelector('#skip');
+    if (skip) skip.onclick = finish;
+    const back = app.querySelector('#back');
+    if (back) back.onclick = () => to(i - 1);
+  }
+  // Swipe left/right between cards
+  let x0 = null;
+  const { signal } = screenListeners;
+  app.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { signal, passive: true });
+  app.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) > 60) to(i + (dx < 0 ? 1 : -1));
+  }, { signal });
+  render();
 }
 
 async function showBackup() {

@@ -90,6 +90,16 @@ input[type=search] { margin-top: 4px; font-size: 20px; border-color: var(--green
 }
 .label { border: 1px dashed var(--line); padding: 8px; text-align: center; background: #fff; color: #000; cursor: pointer; }
 .row.actions { margin-top: 12px; }
+
+/* First-run guide */
+.guide { min-height: calc(100vh - 32px); display: flex; flex-direction: column; justify-content: center; text-align: center; }
+.guide .skip { position: absolute; top: 12px; right: 16px; width: auto; min-height: 44px; margin: 0; border: 0; background: none; color: var(--muted); }
+.guide-icon { font-size: 88px; line-height: 1.2; }
+.guide h1 { font-size: 30px; margin: 12px 0; }
+.guide p { font-size: 20px; margin: 0 0 24px; }
+.dots { display: flex; justify-content: center; gap: 10px; margin-bottom: 8px; }
+.dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.dots span.on { background: var(--green); width: 28px; border-radius: 5px; }
 .row.actions > button { flex: 1; }
 #labelview img { image-rendering: pixelated; }
 .label svg { display: block; width: 100%; height: auto; }
