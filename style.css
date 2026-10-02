@@ -79,4 +79,27 @@ button, .btn {
   .label .num { font-size: 22pt; }
 }
 
-video { display: block; width: 100%; margin-top: 16px; border-radius: 10px; background: #000; }
+video { display: block; width: 100%; border-radius: 10px; background: #000; }
+
+/* Scanner: green frame and badge when a label is found */
+.cam { position: relative; margin-top: 16px; border-radius: 14px; outline: 0 solid var(--green); transition: outline-width .2s; }
+.cam.found { outline-width: 6px; }
+.badge {
+  position: absolute; left: 50%; top: 50%;
+  padding: 14px 22px; border-radius: 999px;
+  background: var(--green); color: #fff; font-size: 24px; font-weight: 800; white-space: nowrap;
+  transform: translate(-50%, -50%) scale(0); opacity: 0;
+}
+.cam.found .badge { animation: pop .35s cubic-bezier(.3, 1.6, .5, 1) forwards; }
+@keyframes pop { to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+/* Screen changes: old screen fades out, new one slides up into place */
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(24px); } }
+::view-transition-old(root) { animation: fade-out .15s ease-out both; }
+::view-transition-new(root) { animation: slide-up .3s ease-out both; }
+main { animation: slide-up .3s ease-out; } /* first load, e.g. opened from Lens */
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; transition: none !important; }
+}

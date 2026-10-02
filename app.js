@@ -75,7 +75,7 @@ let here = location.hash;
 let stopScan = null;         // turns the camera off when leaving the scan screen
 
 function route() {
-  if (location.hash === '#/scan') return showScan();
+  if (location.hash === '#/scan') return void showScan(); // keeps running while scanning, so don't wait on it
   if (location.hash === '#/new') return nextId().then(id => location.replace('#/pot/' + id));
   const l = location.hash.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
   if (l) return showLabels(l[1], l[2] || l[1]);
@@ -94,7 +94,8 @@ addEventListener('hashchange', () => {
   dirty = false;
   here = location.hash;
   stopScan?.();
-  route();
+  if (document.startViewTransition) document.startViewTransition(route); // animated screen change
+  else route();
 });
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 
@@ -135,7 +136,10 @@ async function showScan() {
   app.innerHTML = `
     <a class="btn" href="#/">← Back to My Pots</a>
     <h1>Scan a label</h1>
-    <video id="cam" playsinline muted></video>
+    <div class="cam" id="camwrap">
+      <video id="cam" playsinline muted></video>
+      <div class="badge" id="badge"></div>
+    </div>
     <p class="msg" id="msg">Point the camera at the label.</p>
   `;
   const video = app.querySelector('#cam');
@@ -162,7 +166,18 @@ async function showScan() {
   while (running) {
     for (const code of await detector.detect(video).catch(() => [])) {
       const id = potIdFromCode(code.rawValue);
-      if (id) return void (location.hash = '#/pot/' + id); // hashchange stops the camera
+      if (id) {
+        // Freeze the frame, show the match and buzz, then move on. hashchange stops the camera.
+        video.pause();
+        navigator.vibrate?.(60);
+        msg.classList.remove('bad');
+        msg.textContent = 'Found it!';
+        app.querySelector('#badge').textContent = '✓ Pot ' + id;
+        app.querySelector('#camwrap').classList.add('found');
+        await new Promise(r => setTimeout(r, 550));
+        if (location.hash === '#/scan') location.hash = '#/pot/' + id;
+        return;
+      }
       fail('That\'s not a PotScan label.');
     }
     await new Promise(r => setTimeout(r, 200));

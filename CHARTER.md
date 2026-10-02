@@ -247,7 +247,7 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | M7 | Polish | First-run guide, outdoor styling, delete confirmations, optional label sheet |
 | M8 | Field test | Deployed to the final URL; labels printed; tested on the Xiaomi phone; father demo |
 
-**Lens test (run during M2, before printing labels)**
+**Lens test (run during M2, before printing labels).** Passed 2026-10-02 on Darren's Xiaomi with Chrome as default browser: Lens opened pot 0001 with its data. Chrome's ⋮ menu shows "Install" (full app install). Repeat on the father's phone during M8.
 - [ ] Chrome is the default browser and PotScan is installed from Chrome
 - [ ] Create a test pot in PotScan, then scan its label with Lens and tap the link
 - [ ] The test pot opens **with its data** (in PotScan or a Chrome tab) → Lens stays the main path
