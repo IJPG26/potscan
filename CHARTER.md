@@ -174,6 +174,7 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 
 ### 6.3 Data loss
 - Records live only on this phone. Clearing Chrome's site data, uninstalling or resetting the phone deletes them.
+- **Seen in testing (2026-10-02):** Darren's test totes vanished after he cleared Chrome's browsing history, because the "Cookies and site data" option deletes PotScan's storage. `storage.persist()` does not protect against this. On the father's phone, never tick "Cookies and site data" in Chrome's Delete browsing data (only "Cached images and files" is safe), and be careful with phone cleaner apps. The first-run guide and backup reminder (M6) should say this in plain words.
 - `navigator.storage.persist()` is called on launch so Chrome is less likely to evict data under storage pressure.
 - **Backup is a core feature, not an extra (M6):**
   - Export: one `.json` file `{ app: "potscan", version: 2, exportedAt, totes: [...], items: [...], photos: [{ ..., blob: "data:image/jpeg;base64,...", thumb: "data:..." }] }`. Save it with a download link, and offer the Web Share API so it can go straight to Google Drive, WhatsApp or email.
@@ -255,7 +256,7 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Lens opens links in another browser, so data looks "missing" | Medium | High | Chrome as default browser, PotScan installed, in-app scanner as backup (§6.2) |
-| Data lost on reset or clear | Medium | High | `storage.persist()`, backup with reminder, share to Drive (§6.3) |
+| Data lost on reset or clear (happened once in testing from clearing browsing data) | Medium | High | Backup with reminder, share to Drive, warn about "Cookies and site data" (§6.3) |
 | URL changes after labels are printed | Low | High | Address locked (§6.1) |
 | Labels scuff or peel | Medium | Medium | Waterproof/laminated stock, readable number, manual entry (§6.4) |
 | Storage fills with photos | Low | Medium | Compression (§6.5) |
