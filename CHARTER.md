@@ -215,10 +215,12 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Tested with 15 search cases (single words, multiple words, tote-only words, accents, capitals, punctuation, no results).
 
 ### 6.7 Offline and updates (M5)
-- The service worker pre-caches the app shell under a versioned cache name (`potscan-v1`). Serve cache-first and delete old caches on `activate`.
-- **Bump the cache version on every deploy**, or the phone keeps running old code.
-- Show a small "Update available, tap to reload" note when a new worker is waiting, rather than reloading in the middle of editing a form.
-- Until M5, `sw.js` revalidates every request (`cache: 'no-cache'`) and activates new versions immediately, because GitHub Pages lets browsers cache files for 10 minutes.
+- `sw.js` pre-caches the 8 app files under a versioned cache name (`const CACHE = 'potscan-vN'`), serves cache-first (ignoring `?query`), and deletes old caches on `activate`.
+- Install downloads with `cache: 'reload'`, so GitHub Pages' 10-minute HTTP cache can't put stale files into a new version.
+- **Update flow:** a new version installs in the background and **waits**. The page shows a green **"Update ready, tap to refresh"** bar. Tapping it tells the worker to `skipWaiting`, and the page reloads on `controllerchange`. Nothing reloads in the middle of editing, and the first install never reloads.
+- The app checks for updates on launch and whenever it comes back to the screen (`visibilitychange` → `reg.update()`), since an installed app can stay open for days.
+- **Deploy checklist:** bump `CACHE` in `sw.js` on every deploy that changes app files. A local git `pre-commit` hook (`.git/hooks/pre-commit`, not in the repo) blocks commits that change app files without the bump.
+- Tested: the update bar and switch-over (passthrough → v1 and v1 → v2, old cache deleted, data intact); with the server stopped, the app opened, added an item with a photo, searched and printed labels.
 
 ### 6.8 Simple use for a non-technical user
 - Light, high-contrast theme. Body text at least 18 px, buttons at least 56 px tall.
@@ -265,8 +267,8 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | M1 | Skeleton | ✅ Hash router, IndexedDB, create/view/edit a record by number |
 | M2 | Scan | ✅ Lens test passed; backup scanner with "found" animation; manual entry; built-in label printing |
 | M3 | Photos and items | ✅ Tote and item photos, compression, thumbnails; items inside totes with Save & add another. Passed on-phone test. |
-| M4 | Search and list | ✅ in code, awaiting on-phone test: search across totes and items as you type; item results show tote and location; Recent / A–Z sort |
-| M5 | Offline and install | Caching service worker with update prompt; works in airplane mode |
+| M4 | Search and list | ✅ Search across totes and items as you type; item results show tote and location; Recent / A–Z sort. Passed on-phone test. |
+| M5 | Offline and install | ✅ in code, awaiting on-phone test: caching service worker with update bar; works in airplane mode |
 | M6 | Backup | Export, share, merge-import, reminder |
 | M7 | Polish | First-run guide, wording, any feedback from the father |
 | M8 | Field test | Labels printed; tested on the father's phone; father demo |
@@ -282,10 +284,15 @@ Three or four full-screen cards, skippable, reachable again from Help:
 - [x] 🖼 From gallery accepts several photos at once
 - [x] New item: take photo first, then name it, Save & add another
 
-**On-device test checklist (M4)**
-- [ ] Typing an item name shows it with its tote and location
-- [ ] Tapping a result opens the tote; the back gesture returns to the same search
-- [ ] Recent / A–Z sort, and the choice is remembered after closing the app
+**On-device test checklist (M4)**: passed
+- [x] Typing an item name shows it with its tote and location
+- [x] Tapping a result opens the tote; the back gesture returns to the same search
+- [x] Recent / A–Z sort, and the choice is remembered after closing the app
+
+**On-device test checklist (M5)**
+- [ ] After reloading once online, the green "Update ready" bar appears; tapping it refreshes
+- [ ] Airplane mode: open PotScan from its icon, open a tote, add an item with a photo, search
+- [ ] Airplane mode: scan a label with Lens (Lens reads QR codes offline) and tap the link
 
 **On-device test checklist (M8)**
 - [ ] Lens scan in normal and dim light

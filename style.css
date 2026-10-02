@@ -97,6 +97,13 @@ input[type=search] { margin-top: 4px; font-size: 20px; border-color: var(--green
   .label .num { font-size: 22pt; }
 }
 
+#update {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10;
+  width: auto; max-width: 568px; margin: 0 auto;
+  background: var(--green); border-color: var(--green); color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+}
+
 video { display: block; width: 100%; border-radius: 10px; background: #000; }
 
 /* Scanner: green frame and badge when a label is found */

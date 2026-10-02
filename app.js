@@ -85,7 +85,37 @@ async function touchTote(id) {
 }
 
 navigator.storage?.persist?.();
-navigator.serviceWorker?.register('sw.js');
+
+// ---------- Offline + updates ----------
+
+// A new version downloads in the background, then waits. The user taps the bar to switch,
+// so nothing reloads in the middle of editing.
+let updating = false;
+function offerUpdate(worker) {
+  if (document.getElementById('update')) return;
+  const bar = document.createElement('button');
+  bar.id = 'update';
+  bar.textContent = 'Update ready, tap to refresh';
+  bar.onclick = () => { updating = true; bar.textContent = 'Updating…'; worker.postMessage('skipWaiting'); };
+  document.body.append(bar);
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.onupdatefound = () => {
+      const w = reg.installing;
+      w.onstatechange = () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w); // not on first install
+      };
+    };
+    // The app can stay open for days; check for a new version whenever it comes back to the screen.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {}); // offline: try later
+    });
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (updating) location.reload(); });
+}
 
 // ---------- Helpers ----------
 
