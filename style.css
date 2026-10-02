@@ -57,4 +57,26 @@ button, .btn {
 .list small, .muted { color: var(--muted); }
 .msg { color: var(--green); font-weight: 700; min-height: 1.4em; margin-top: 12px; }
 .msg.bad { color: var(--red); }
+.row > div { flex: 1; }
+.row > div label { margin-top: 0; }
+
+.sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+.label { border: 1px dashed var(--line); padding: 8px; text-align: center; background: #fff; color: #000; }
+.label svg { display: block; width: 100%; height: auto; }
+.label .num { font-size: 28px; font-weight: 800; letter-spacing: 2px; }
+
+@media print {
+  .no-print { display: none; }
+  main { max-width: none; padding: 0; }
+  .sheet { display: flex; flex-wrap: wrap; gap: 0; margin: 0; }
+  .label { width: 5cm; padding: 0.4cm; break-inside: avoid; }
+  .label svg { width: 4.2cm; height: 4.2cm; margin: 0 auto; }
+  .label .num { font-size: 22pt; }
+}
+
 video { display: block; width: 100%; margin-top: 16px; border-radius: 10px; background: #000; }

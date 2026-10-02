@@ -36,6 +36,9 @@ navigator.serviceWorker?.register('sw.js');
 
 const app = document.getElementById('app');
 
+// Printed into every QR label. Must never change once labels exist (CHARTER §6.1).
+const LABEL_BASE = 'https://ijpg26.github.io/potscan/';
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -51,6 +54,20 @@ function potIdFromCode(text) {
   return padId(m ? m[1] : text);
 }
 
+// ponytail: based on saved pots only, so a pre-printed but unrecorded label number can be handed out again.
+// Track the highest printed number in "meta" if that becomes a problem.
+async function nextId() {
+  const max = Math.max(0, ...(await allPots()).map(p => parseInt(p.id, 10)));
+  return padId(String(max + 1));
+}
+
+const qrSvg = id => {
+  const qr = qrcode(0, 'Q');
+  qr.addData(LABEL_BASE + '#/pot/' + id);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 1, margin: 4, scalable: true });
+};
+
 // ---------- Router ----------
 
 let dirty = false;           // unsaved changes on the pot form
@@ -59,6 +76,9 @@ let stopScan = null;         // turns the camera off when leaving the scan scree
 
 function route() {
   if (location.hash === '#/scan') return showScan();
+  if (location.hash === '#/new') return nextId().then(id => location.replace('#/pot/' + id));
+  const l = location.hash.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
+  if (l) return showLabels(l[1], l[2] || l[1]);
   const m = location.hash.match(/^#\/pot\/(\d+)$/);
   if (!m) return showHome();
   const id = padId(m[1]);
@@ -85,20 +105,23 @@ async function showHome() {
   app.innerHTML = `
     <h1>PotScan</h1>
     ${'BarcodeDetector' in window ? '<a class="btn primary" href="#/scan">Scan a label</a>' : ''}
+    <a class="btn primary" href="#/new">+ Add a new pot</a>
     <form id="open">
-      <label for="num">Pot number</label>
+      <label for="num">Open a pot by number</label>
       <div class="row">
         <input id="num" inputmode="numeric" pattern="[0-9]*" placeholder="e.g. 12" autocomplete="off">
         <button>Open</button>
       </div>
+      <small class="muted">The number printed under the QR code. A new number starts a new pot.</small>
     </form>
+    <a class="btn" href="#/labels">Print labels</a>
     <h2>My Pots <span class="muted">(${pots.length})</span></h2>
     ${pots.length ? `<ul class="list">${pots.map(p => `
       <li><a href="#/pot/${esc(p.id)}">
         <strong>${esc(p.name)}</strong><br>
         <small>#${esc(p.id)}${p.location ? ' · ' + esc(p.location) : ''}</small>
       </a></li>`).join('')}</ul>`
-      : '<p class="muted">No pots yet. Type a pot number above to add one.</p>'}
+      : '<p class="muted">No pots yet. Tap “Add a new pot” to start.</p>'}
   `;
   app.querySelector('#open').onsubmit = e => {
     e.preventDefault();
@@ -146,6 +169,39 @@ async function showScan() {
   }
 }
 
+async function showLabels(from, to) {
+  from = parseInt(from || await nextId(), 10);
+  to = parseInt(to || from, 10);
+  if (to < from) [from, to] = [to, from];
+  to = Math.min(to, from + 99); // keep a sheet printable
+
+  const ids = Array.from({ length: to - from + 1 }, (_, i) => padId(String(from + i)));
+  app.innerHTML = `
+    <div class="no-print">
+      <a class="btn" href="#/">← Back to My Pots</a>
+      <h1>Print labels</h1>
+      <form id="range">
+        <div class="row">
+          <div><label for="from">From</label><input id="from" inputmode="numeric" value="${from}"></div>
+          <div><label for="to">To</label><input id="to" inputmode="numeric" value="${to}"></div>
+        </div>
+        <button>Show labels</button>
+      </form>
+      <button class="primary" id="print">Print ${ids.length} label${ids.length > 1 ? 's' : ''}</button>
+      <p class="muted">Use waterproof sticker paper, or laminate the labels. Each code prints about 4 cm wide.</p>
+    </div>
+    <div class="sheet">${ids.map(id => `
+      <div class="label">${qrSvg(id)}<div class="num">${id}</div></div>`).join('')}
+    </div>
+  `;
+  app.querySelector('#range').onsubmit = e => {
+    e.preventDefault();
+    const f = padId(app.querySelector('#from').value), t = padId(app.querySelector('#to').value) || f;
+    if (f) location.hash = `#/labels/${f}-${t}`;
+  };
+  app.querySelector('#print').onclick = () => print();
+}
+
 async function showPot(id) {
   const [pot, pots] = await Promise.all([getPot(id), allPots()]);
   const p = pot || { id, quantity: 1 };
@@ -180,7 +236,8 @@ async function showPot(id) {
       <button class="primary">Save</button>
       <p class="msg" id="msg"></p>
     </form>
-    ${pot ? '<button class="danger" id="del">Delete this pot</button>' : ''}
+    ${pot ? `<a class="btn" href="#/labels/${esc(id)}">Print label</a>
+             <button class="danger" id="del">Delete this pot</button>` : ''}
   `;
 
   const form = app.querySelector('#pot');

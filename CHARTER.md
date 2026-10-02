@@ -41,7 +41,8 @@ Build a free, offline-capable phone app that lets a gardener label pots with QR 
 - Offline use (service worker) and home-screen install (manifest)
 - JSON export/import backup with a "last backup" reminder
 - First-run guide
-- A printable label sheet, if it stays small (see §6.4)
+- Built-in QR label printing: one label from a pot's page, or a numbered batch (see §6.4)
+- "Add a new pot" button that picks the next free number
 
 **Out of scope**
 Accounts and sign-in, label sales, family profiles and sharing, moving records between accounts, voice assistants, mover or organizer tools, multi-device sync.
@@ -66,7 +67,7 @@ These are fixed unless the charter is revised.
 | Decision | Choice | Why |
 |---|---|---|
 | App type | Static PWA: HTML, CSS, vanilla JS | No build step and no framework. Small enough for one person to maintain. |
-| Files | `index.html`, `app.js`, `style.css`, `sw.js`, `manifest.webmanifest`, icons, plus one vendored QR library if label printing is built | Fewest files possible |
+| Files | `index.html`, `app.js`, `style.css`, `sw.js`, `manifest.webmanifest`, icons, and `qrcode.js` (vendored [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4, MIT) for labels | Fewest files possible |
 | Storage | IndexedDB, with photos stored as `Blob`s | Built in, holds binary data, works offline |
 | Routing | Hash routes (`#/pot/0012`, `#/list`, `#/scan`) | Static hosts serve only `index.html`. Hash routes never 404 and need no rewrite rules. |
 | Hosting | GitHub Pages (or Netlify) | Free, and HTTPS is required for the camera, the service worker and install |
@@ -109,8 +110,10 @@ One object store, `pots`, keyed by `id`. Photos sit in their own store so the li
 
 | Route | Screen |
 |---|---|
-| `#/` | Home: search box, "My Pots" list, a **Scan** button (backup scanner) and an "Enter pot number" button |
+| `#/` | Home: **Scan a label** (backup scanner), **+ Add a new pot**, "Open a pot by number", **Print labels**, "My Pots" list (search box comes in M4) |
 | `#/scan` | Backup scanner: camera view using `BarcodeDetector`. On a hit, go to `#/pot/<id>`. |
+| `#/new` | Picks the next free number and opens the new-pot form |
+| `#/labels`, `#/labels/<id>`, `#/labels/<from>-<to>` | Label sheet with Print button |
 | `#/pot/<id>` | Record exists: view/edit. Unknown: new-pot form with the ID filled in. |
 | `#/backup` | Export, import, last-backup date |
 | `#/help` | First-run guide (also shown automatically on first launch) |
@@ -169,7 +172,11 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Code at least **3–4 cm** wide, black on white, error-correction level **Q** (survives dirt and scratches), with a white quiet zone around it.
 - Short URL = less dense code = easier scanning in glare.
 - Waterproof vinyl or laminated paper, out of direct midday sun where possible.
-- Optional: a `#/labels` page that prints a sheet of codes for a range (e.g. 0001–0024) with a small vendored QR generator and `window.print()`. This removes the external-generator step. Build it only if it stays under ~50 lines plus the library.
+- **Labels are made inside PotScan, with no outside QR website.** `#/labels/0012` prints one label (linked from each pot's page as **Print label**). `#/labels/0001-0024` prints a batch (up to 100) for labeling pots before recording them. Printing uses `window.print()`, to a printer or "Save as PDF". The QR always encodes the locked address (`LABEL_BASE` in `app.js`), even when the app runs from localhost.
+- Two ways to work:
+  - **One at a time:** Add a new pot → fill in → Save → Print label → stick it on.
+  - **Batch:** Print labels 0001–0012 → stick them on pots → scan each → fill in.
+- `#/new` picks the highest saved number + 1. It doesn't know about printed-but-unrecorded labels, so for batch work, scan the labels instead of using Add a new pot.
 
 ### 6.5 Photos
 - Compress on save. Resize so the long edge is at most **1280 px**, then `canvas.toBlob('image/jpeg', 0.7)`. Target ~150–250 KB per photo.
