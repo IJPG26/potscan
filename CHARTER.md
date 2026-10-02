@@ -279,8 +279,8 @@ Five full-screen cards: Next / Back buttons, swipe left or right, **Skip** (not 
 | M4 | Search and list | ✅ Search across totes and items as you type; item results show tote and location; Recent / A–Z sort. Passed on-phone test. |
 | M5 | Offline and install | ✅ Caching service worker with update bar; works in airplane mode. Passed on-phone test. |
 | M6 | Backup | ✅ Export (share to Drive / download), merge-restore, reminder. Passed on-phone test (Drive sharing works as `.txt`). |
-| M7 | Polish | ✅ in code, awaiting on-phone test: first-run guide, Help button, scroll restore, label pictures (Share / Download PNG), final name PotScan |
-| M8 | Field test | Labels printed; tested on the father's phone; father demo |
+| M7 | Polish | ✅ First-run guide, Help button, scroll restore, label pictures (Share / Download PNG), final name PotScan. Passed on-phone test. |
+| M8 | Field test | In progress: run sheet below (labels, phone setup, Lens test, demo, timing, offline, backup/restore) |
 
 **Lens test.** Passed 2026-10-02 on Darren's Xiaomi with Chrome as default browser: Lens opened record 0001 with its data. Chrome's ⋮ menu shows "Install" (full app install). With Opera as default, links open in Opera, which has separate storage. Repeat on the father's phone during M8:
 - [ ] Chrome is the default browser and PotScan is installed from Chrome
@@ -315,14 +315,43 @@ Five full-screen cards: Next / Back buttons, swipe left or right, **Skip** (not 
 - [ ] Guide: swipe and buttons work; Skip and "Start using PotScan" go Home; ❓ reopens it
 - [ ] Long tote list: open a tote far down, then Back returns to the same spot
 
-**On-device test checklist (M8)**
-- [ ] Lens scan in normal and dim light
-- [ ] In-app scan
-- [ ] Manual entry: typing `12` opens tote `0012`
-- [ ] Airplane mode: open, create, edit, add a photo, search
-- [ ] Export → clear site data → import → everything back, photos included
-- [ ] Reboot the phone: data is still there
-- [ ] Deploy a change: the update prompt appears
+**M7**: passed on Darren's phone.
+
+**M8 field test run sheet (father's phone)**
+
+*A. Labels (on the PC, before the visit)*
+- [ ] Open `https://ijpg26.github.io/potscan/#/labels/0001-0012` on the PC. Print, or Download all and arrange in Canva. Codes at least 3–4 cm, white border kept, waterproof or laminated stock.
+
+*B. Phone setup (~10 min)*
+- [ ] Chrome updated from the Play Store
+- [ ] Settings → Apps → Default apps → Browser → **Chrome**
+- [ ] Open `https://ijpg26.github.io/potscan/` in Chrome → ⋮ → **Install**
+- [ ] Open PotScan from its icon. The guide appears; the bottom of Home says **"Version 11 · Chrome · installed app"**
+- [ ] Tap **Scan a label** once → **Allow** camera
+- [ ] Google search widget (with the Lens icon) on the home screen next to PotScan
+- [ ] Xiaomi Security / Cleaner app: don't let it clear Chrome's data
+
+*C. Lens test*
+- [ ] Add tote 0001 → scan its printed label with Lens → tap the link → tote 0001 opens **with its data**
+
+*D. Demo (success criterion 5)*
+- [ ] Darren does one tote end to end while the father watches (label → Lens → name/location → 2–3 items with photos → search for one item → Backup)
+- [ ] The father does the **next tote alone**, without help. Note where he hesitates.
+
+*E. Timing (success criteria 1–2)*
+- [ ] New tote labeled, scanned and named: under 1 minute
+- [ ] Each further item with photo: under 20 seconds
+- [ ] Search for an item → which tote and where: under 5 seconds
+
+*F. Offline (criterion 3)*
+- [ ] Airplane mode: open from the icon, Lens-scan a tote, add an item with a photo, search
+
+*G. Backup and restore (criterion 4), without risking his data*
+- [ ] The father taps 💾 Backup → Save backup to Google Drive (and/or shares it to Darren on WhatsApp)
+- [ ] On Darren's phone, open a Chrome **Incognito** tab (fresh, empty storage) → PotScan → Backup → restore the father's file → every tote, item and photo is there → close Incognito
+
+*H. Report back*
+- [ ] Results, timings, and anything that confused the father → fixes in a follow-up
 
 ## 10. Success criteria (acceptance)
 
