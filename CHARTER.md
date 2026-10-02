@@ -280,7 +280,7 @@ Five full-screen cards: Next / Back buttons, swipe left or right, **Skip** (not 
 | M5 | Offline and install | ✅ Caching service worker with update bar; works in airplane mode. Passed on-phone test. |
 | M6 | Backup | ✅ Export (share to Drive / download), merge-restore, reminder. Passed on-phone test (Drive sharing works as `.txt`). |
 | M7 | Polish | ✅ First-run guide, Help button, scroll restore, label pictures (Share / Download PNG), final name PotScan. Passed on-phone test. |
-| M8 | Field test | In progress: run sheet below (labels, phone setup, Lens test, demo, timing, offline, backup/restore) |
+| M8 | Field test | ✅ Passed 2026-10-02 on the father's phone: setup, Lens test, demo, timing, offline, backup/restore. Father satisfied. |
 
 **Lens test.** Passed 2026-10-02 on Darren's Xiaomi with Chrome as default browser: Lens opened record 0001 with its data. Chrome's ⋮ menu shows "Install" (full app install). With Opera as default, links open in Opera, which has separate storage. Repeat on the father's phone during M8:
 - [ ] Chrome is the default browser and PotScan is installed from Chrome
@@ -365,4 +365,4 @@ Five full-screen cards: Next / Back buttons, swipe left or right, **Skip** (not 
 
 | Role | Name | Date |
 |---|---|---|
-| Product owner | Darren | |
+| Product owner | Darren | 2026-10-02: v1 accepted after the M8 field test |
