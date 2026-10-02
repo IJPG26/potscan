@@ -41,6 +41,9 @@ button, .btn {
 }
 .primary { background: var(--green); border-color: var(--green); color: #fff; }
 .danger { color: var(--red); border-color: var(--red); }
+.warn { background: #fff4e0; border-color: #b26a00; color: #7a4800; }
+.warn-text { color: #7a4800; }
+.msg { white-space: pre-line; }
 
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; }

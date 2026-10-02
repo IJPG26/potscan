@@ -78,6 +78,9 @@ const deleteTote = id => writeTx(['totes', 'items', 'photos'], t => {
   };
 });
 
+const getMeta = async key => (await tx('meta', 'readonly', s => s.get(key)))?.value;
+const setMeta = (key, value) => tx('meta', 'readwrite', s => s.put({ key, value }));
+
 // Moves a tote up in "date updated" order after its items or photos change.
 async function touchTote(id) {
   const tote = await getTote(id);
@@ -302,6 +305,96 @@ async function renderPhotos(ownerId, emptyText = 'No photos yet.') {
   viewer.querySelector('#closeview').onclick = () => viewer.close();
 }
 
+// ---------- Backup (CHARTER §6.3) ----------
+
+const BACKUP_VERSION = 2; // matches the DB version; bump if the backup format changes
+
+const toDataUrl = blob => new Promise((ok, fail) => {
+  const r = new FileReader();
+  r.onload = () => ok(r.result);
+  r.onerror = () => fail(r.error);
+  r.readAsDataURL(blob);
+});
+
+// One JSON file with everything. Built from parts so the photos never sit in one giant string.
+async function makeBackup() {
+  const [totes, items, photos] = await Promise.all([allTotes(), allItems(), allPhotos()]);
+  const head = JSON.stringify({ app: 'potscan', version: BACKUP_VERSION, exportedAt: Date.now(), totes, items });
+  const parts = [head.slice(0, -1), ',"photos":['];
+  for (const [i, ph] of photos.entries()) {
+    parts.push((i ? ',' : '') + JSON.stringify({
+      id: ph.id, ownerId: ph.ownerId, takenAt: ph.takenAt,
+      blob: await toDataUrl(ph.blob), thumb: await toDataUrl(ph.thumb),
+    }));
+  }
+  parts.push(']}');
+  return new Blob(parts, { type: 'application/json' });
+}
+
+// Reads and checks a backup file. Anything malformed is skipped, never trusted.
+async function readBackup(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { data = null; }
+  if (data?.app !== 'potscan' || !Array.isArray(data.totes) || !Array.isArray(data.items) || !Array.isArray(data.photos)) {
+    throw new Error('That file isn\'t a PotScan backup.');
+  }
+  if (!(data.version <= BACKUP_VERSION)) throw new Error('This backup is from a newer version of PotScan. Update the app first.');
+
+  const str = v => typeof v === 'string' ? v.slice(0, 5000) : '';
+  const time = v => Number.isFinite(v) ? v : 0;
+  const isImage = v => typeof v === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(v);
+  let skipped = 0;
+  const keep = (list, ok, clean) => list.filter(x => ok(x) || (skipped++, false)).map(clean);
+
+  return {
+    exportedAt: time(data.exportedAt),
+    totes: keep(data.totes, t => /^\d{4,9}$/.test(t?.id), t => ({
+      id: t.id, name: str(t.name) || 'Unnamed tote', location: str(t.location), description: str(t.description),
+      keywords: str(t.keywords), createdAt: time(t.createdAt), updatedAt: time(t.updatedAt),
+    })),
+    items: keep(data.items, it => /^i_[\w-]{1,64}$/.test(it?.id) && /^\d{4,9}$/.test(it?.toteId), it => ({
+      id: it.id, toteId: it.toteId, name: str(it.name) || 'Unnamed item',
+      quantity: Number.isInteger(it.quantity) && it.quantity >= 0 ? it.quantity : 1,
+      description: str(it.description), createdAt: time(it.createdAt), updatedAt: time(it.updatedAt),
+    })),
+    photos: keep(data.photos, ph => /^p_[\w-]{1,64}$/.test(ph?.id) && /^(\d{4,9}|i_[\w-]{1,64})$/.test(ph?.ownerId)
+      && isImage(ph.blob) && isImage(ph.thumb), ph => ({ id: ph.id, ownerId: ph.ownerId, takenAt: time(ph.takenAt), blob: ph.blob, thumb: ph.thumb })),
+    skipped,
+  };
+}
+
+// What importing would change: add missing records, replace ones where the backup is newer. Never deletes.
+async function planImport(backup) {
+  const [totes, items, photos] = await Promise.all([allTotes(), allItems(), allPhotos()]);
+  const split = (incoming, local) => {
+    const have = new Map(local.map(x => [x.id, x]));
+    return {
+      add: incoming.filter(x => !have.has(x.id)),
+      update: incoming.filter(x => have.has(x.id) && x.updatedAt > have.get(x.id).updatedAt),
+    };
+  };
+  const photoIds = new Set(photos.map(p => p.id));
+  return { totes: split(backup.totes, totes), items: split(backup.items, items), photos: backup.photos.filter(p => !photoIds.has(p.id)) };
+}
+
+async function applyImport(plan) {
+  const dataUrlToBlob = async url => (await fetch(url)).blob();
+  // Convert first: a transaction closes if it waits on anything else.
+  const photos = await Promise.all(plan.photos.map(async p =>
+    ({ ...p, blob: await dataUrlToBlob(p.blob), thumb: await dataUrlToBlob(p.thumb) })));
+  await writeTx(['totes', 'items', 'photos'], t => {
+    for (const x of [...plan.totes.add, ...plan.totes.update]) t.objectStore('totes').put(x);
+    for (const x of [...plan.items.add, ...plan.items.update]) t.objectStore('items').put(x);
+    for (const x of photos) t.objectStore('photos').put(x);
+  });
+}
+
+const daysAgo = ms => {
+  const d = Math.floor((Date.now() - ms) / 864e5);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+};
+const backupIsStale = last => !last || Date.now() - last > 14 * 864e5;
+
 // ---------- Router ----------
 
 let dirty = false;           // unsaved changes on a form
@@ -313,6 +406,7 @@ function route() {
   urls = new Map();
   const h = location.hash.split('?')[0]; // "#/?q=drill" is the home screen with a search
   if (h === '#/scan') return void showScan(); // keeps running while scanning, so don't wait on it
+  if (h === '#/backup') return showBackup();
   if (h === '#/new') return nextId().then(id => location.replace('#/tote/' + id));
   const l = h.match(/^#\/labels(?:\/(\d+)(?:-(\d+))?)?$/);
   if (l) return showLabels(l[1], l[2] || l[1]);
@@ -341,7 +435,7 @@ addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 // ---------- Screens ----------
 
 async function showHome() {
-  const [totes, items, photos] = await Promise.all([allTotes(), allItems(), allPhotos()]);
+  const [totes, items, photos, lastBackup] = await Promise.all([allTotes(), allItems(), allPhotos(), getMeta('lastBackupAt')]);
   const newest = newestPhotos(photos);
   const byTote = {};
   for (const it of items) (byTote[it.toteId] ||= []).push(it);
@@ -382,6 +476,8 @@ async function showHome() {
       <small class="muted">The number printed under the QR code. A new number starts a new tote.</small>
     </form>
     <a class="btn" href="#/labels">Print labels</a>
+    <a class="btn ${totes.length && backupIsStale(lastBackup) ? 'warn' : ''}" href="#/backup">
+      💾 Backup · last: ${lastBackup ? daysAgo(lastBackup) : 'never'}</a>
     <h2>My Totes <span class="muted">(${totes.length})</span></h2>
     ${totes.length ? `
       <div class="row sort" role="group" aria-label="Sort totes">
@@ -434,6 +530,90 @@ async function showHome() {
     const id = padId(app.querySelector('#num').value);
     if (id) location.hash = '#/tote/' + id;
     else alert('Please type the number printed on the label.');
+  };
+}
+
+async function showBackup() {
+  const [totes, items, photos, lastBackup] = await Promise.all([allTotes(), allItems(), allPhotos(), getMeta('lastBackupAt')]);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const name = `potscan-backup-${stamp}.json`;
+  // Android may refuse to share .json files; .txt with the same contents is the fallback.
+  const shareFile = ['application/json', 'text/plain'].map((type, i) =>
+    new File([''], i ? name.replace(/\.json$/, '.txt') : name, { type })).find(f => navigator.canShare?.({ files: [f] }));
+
+  app.innerHTML = `
+    <a class="btn" href="#/">← Back to My Totes</a>
+    <h1>Backup</h1>
+    <p>Your totes live <strong>only on this phone</strong>. Save a backup every week or two, somewhere safe like Google Drive.</p>
+    <p class="muted">⚠️ Clearing Chrome's “Cookies and site data” or resetting the phone deletes everything that isn't backed up.</p>
+    <p class="${totes.length && backupIsStale(lastBackup) ? 'warn-text' : ''}">
+      Last backup: <strong>${lastBackup ? `${daysAgo(lastBackup)} (${fmtDate(lastBackup)})` : 'never'}</strong><br>
+      <span class="muted">On this phone: ${plural(totes.length, 'tote')} · ${plural(items.length, 'item')} · ${plural(photos.length, 'photo')}</span>
+    </p>
+    ${shareFile ? '<button class="primary" id="share">Save backup to Google Drive…</button>' : ''}
+    <button class="${shareFile ? '' : 'primary'}" id="download">Download backup file</button>
+    <p class="msg" id="msg"></p>
+
+    <h2>Restore</h2>
+    <p class="muted">Adds what's in a backup file to this phone. Anything already here stays; nothing is deleted.</p>
+    <label class="btn">Choose a backup file…
+      <input type="file" accept=".json,.txt,application/json,text/plain" hidden id="restore"></label>
+    <p class="msg" id="restoremsg"></p>
+  `;
+
+  // Prepared as soon as the screen opens: Android only allows sharing within a few seconds of the tap.
+  const ready = makeBackup();
+  const msg = app.querySelector('#msg');
+  const say = (el, text, bad = false) => { el.textContent = text; el.classList.toggle('bad', bad); };
+  const done = async () => { await setMeta('lastBackupAt', Date.now()); await showBackup(); say(app.querySelector('#msg'), 'Backup saved ✓'); };
+
+  const shareBtn = app.querySelector('#share');
+  if (shareBtn) shareBtn.onclick = async () => {
+    say(msg, 'Preparing backup…');
+    const file = new File([await ready], shareFile.name, { type: shareFile.type });
+    try {
+      await navigator.share({ files: [file], title: 'PotScan backup' });
+      await done();
+    } catch (e) {
+      say(msg, e.name === 'AbortError' ? 'Not saved. Try again when ready.' : 'Sharing didn\'t work. Use Download instead.', true);
+    }
+  };
+
+  app.querySelector('#download').onclick = async () => {
+    say(msg, 'Preparing backup…');
+    const a = Object.assign(document.createElement('a'), { href: blobUrl(await ready), download: name });
+    a.click();
+    await done();
+  };
+
+  const restoreMsg = app.querySelector('#restoremsg');
+  app.querySelector('#restore').onchange = async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    say(restoreMsg, 'Reading backup…');
+    try {
+      const backup = await readBackup(file);
+      const plan = await planImport(backup);
+      // "add 2 totes and 5 items, update 1 tote"
+      const and = list => list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list.at(-1) : list[0];
+      const counted = pairs => pairs.filter(([n]) => n).map(([n, word]) => plural(n, word));
+      const adds = counted([[plan.totes.add.length, 'tote'], [plan.items.add.length, 'item'], [plan.photos.length, 'photo']]);
+      const updates = counted([[plan.totes.update.length, 'tote'], [plan.items.update.length, 'item']]);
+      const changes = [adds.length && 'add ' + and(adds), updates.length && 'update ' + and(updates)].filter(Boolean);
+      if (!changes.length) return say(restoreMsg, 'Everything in this backup is already on this phone ✓');
+      const from = backup.exportedAt ? ` from ${fmtDate(backup.exportedAt)}` : '';
+      const skipped = backup.skipped ? `\n\n${backup.skipped} damaged ${backup.skipped === 1 ? 'entry' : 'entries'} will be skipped.` : '';
+      if (!confirm(`Restore this backup${from}?\n\nThis will ${changes.join(', ')}.\nNothing on this phone will be deleted.${skipped}`)) {
+        return say(restoreMsg, 'Restore cancelled.');
+      }
+      say(restoreMsg, 'Restoring…');
+      await applyImport(plan);
+      await showBackup();
+      say(app.querySelector('#restoremsg'), `Restored ✓ (${changes.join(', ')})`);
+    } catch (err) {
+      say(restoreMsg, err.message || 'Couldn\'t read that file.', true);
+    }
   };
 }
 

@@ -176,10 +176,14 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Records live only on this phone. Clearing Chrome's site data, uninstalling or resetting the phone deletes them.
 - **Seen in testing (2026-10-02):** Darren's test totes vanished after he cleared Chrome's browsing history, because the "Cookies and site data" option deletes PotScan's storage. `storage.persist()` does not protect against this. On the father's phone, never tick "Cookies and site data" in Chrome's Delete browsing data (only "Cached images and files" is safe), and be careful with phone cleaner apps. The first-run guide and backup reminder (M6) should say this in plain words.
 - `navigator.storage.persist()` is called on launch so Chrome is less likely to evict data under storage pressure.
-- **Backup is a core feature, not an extra (M6):**
-  - Export: one `.json` file `{ app: "potscan", version: 2, exportedAt, totes: [...], items: [...], photos: [{ ..., blob: "data:image/jpeg;base64,...", thumb: "data:..." }] }`. Save it with a download link, and offer the Web Share API so it can go straight to Google Drive, WhatsApp or email.
-  - Import: check `app` and `version`, then **merge by `id`, keeping whichever `updatedAt` is newer** (photos: add if the id is missing). Show a summary ("12 added, 3 updated") before writing. Never delete records that aren't in the file.
-  - Home shows "Last backup: N days ago" and turns it orange after 14 days.
+- **Backup is a core feature, not an extra (M6, `#/backup`):**
+  - Export: one file `potscan-backup-YYYY-MM-DD.json` = `{ app: "potscan", version: 2, exportedAt, totes: [...], items: [...], photos: [{ id, ownerId, takenAt, blob: "data:image/jpeg;base64,...", thumb: "data:..." }] }`. It's built from parts (one per photo), so it never sits in one giant string.
+  - **Save backup to Google Drive…** uses the Web Share API with files (the Android share menu: Drive, WhatsApp, email…). It's shown only if `navigator.canShare` accepts the file, trying `.json` first and then the same contents as `.txt`. **Download backup file** always works. The file is prepared as soon as the screen opens, because Android only allows sharing within a few seconds of the tap.
+  - A backup counts as saved (`meta.lastBackupAt`) when sharing completes or Download is tapped. A cancelled share doesn't count.
+  - Restore: the file is a trust boundary. It's refused unless `app === "potscan"` and `version ≤ 2`. Each entry is checked (id formats; photos must be `data:image/jpeg|png|webp;base64`), only known fields are kept, and anything malformed is skipped and counted.
+  - **Merge:** add records that are missing; replace a tote or item only if the backup's `updatedAt` is newer; add photos whose id is missing. **Never delete.** A confirm dialog lists the changes ("add 2 items and 2 photos, update 1 tote") before anything is written, in one transaction. Restoring the same file twice changes nothing.
+  - Home's **💾 Backup · last: …** button turns orange if there's never been a backup, or it's been more than 14 days (only once there's at least one tote).
+  - Tested: export, then wipe every store, then restore came back identical, byte for byte, photos included. Also tested: second restore does nothing; newer phone edits are kept and older ones replaced; non-JSON, other JSON, newer-version and malformed files are refused or skipped.
 - Base64 adds about 33% to file size. That's fine at ~130 KB per photo. ZIP would need a library, so skip it.
 
 ### 6.4 Labels
@@ -270,8 +274,8 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | M2 | Scan | ✅ Lens test passed; backup scanner with "found" animation; manual entry; built-in label printing |
 | M3 | Photos and items | ✅ Tote and item photos, compression, thumbnails; items inside totes with Save & add another. Passed on-phone test. |
 | M4 | Search and list | ✅ Search across totes and items as you type; item results show tote and location; Recent / A–Z sort. Passed on-phone test. |
-| M5 | Offline and install | ✅ in code, awaiting on-phone test: caching service worker with update bar; works in airplane mode |
-| M6 | Backup | Export, share, merge-import, reminder |
+| M5 | Offline and install | ✅ Caching service worker with update bar; works in airplane mode. Passed on-phone test. |
+| M6 | Backup | ✅ in code, awaiting on-phone test: export (share to Drive / download), merge-restore, reminder |
 | M7 | Polish | First-run guide, wording, any feedback from the father |
 | M8 | Field test | Labels printed; tested on the father's phone; father demo |
 
@@ -291,10 +295,15 @@ Three or four full-screen cards, skippable, reachable again from Help:
 - [x] Tapping a result opens the tote; the back gesture returns to the same search
 - [x] Recent / A–Z sort, and the choice is remembered after closing the app
 
-**On-device test checklist (M5)**
-- [ ] After reloading once online, the green "Update ready" bar appears; tapping it refreshes
-- [ ] Airplane mode: open PotScan from its icon, open a tote, add an item with a photo, search
-- [ ] Airplane mode: scan a label with Lens (Lens reads QR codes offline) and tap the link
+**On-device test checklist (M5)**: passed
+- [x] After reloading once online, the green "Update ready" bar appears; tapping it refreshes
+- [x] Airplane mode: open PotScan from its icon, open a tote, add an item with a photo, search
+
+**On-device test checklist (M6)**
+- [ ] "Save backup to Google Drive…" appears and opens the share menu; saving to Drive works
+- [ ] Home's Backup button shows "last: today" afterwards
+- [ ] Delete a test item, restore the backup file from Drive → the item and its photo come back
+- [ ] Download backup file saves to Downloads
 
 **On-device test checklist (M8)**
 - [ ] Lens scan in normal and dim light
