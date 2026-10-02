@@ -88,7 +88,10 @@ input[type=search] { margin-top: 4px; font-size: 20px; border-color: var(--green
   gap: 12px;
   margin-top: 24px;
 }
-.label { border: 1px dashed var(--line); padding: 8px; text-align: center; background: #fff; color: #000; }
+.label { border: 1px dashed var(--line); padding: 8px; text-align: center; background: #fff; color: #000; cursor: pointer; }
+.row.actions { margin-top: 12px; }
+.row.actions > button { flex: 1; }
+#labelview img { image-rendering: pixelated; }
 .label svg { display: block; width: 100%; height: auto; }
 .label .num { font-size: 28px; font-weight: 800; letter-spacing: 2px; }
 

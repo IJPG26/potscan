@@ -156,6 +156,29 @@ const qrSvg = id => {
   return qr.createSvgTag({ cellSize: 1, margin: 4, scalable: true });
 };
 
+// A label as a PNG picture: QR code with the number underneath, ~1000 px wide, for Canva or printing
+// elsewhere. Drawn square by square so it stays sharp at any size. Keeps the 4-square white border scanners need.
+async function labelPng(id) {
+  const qr = qrcode(0, 'Q');
+  qr.addData(LABEL_BASE + '#/tote/' + id);
+  qr.make();
+  const n = qr.getModuleCount(), quiet = 4;
+  const cell = Math.floor(1000 / (n + quiet * 2)), size = cell * (n + quiet * 2), textH = Math.round(size * 0.2);
+  const c = new OffscreenCanvas(size, size + textH);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#000';
+  for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) {
+    if (qr.isDark(r, col)) g.fillRect((col + quiet) * cell, (r + quiet) * cell, cell, cell);
+  }
+  g.font = `800 ${Math.round(textH * 0.8)}px system-ui, sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(id, size / 2, size + textH / 2 - cell * 2); // tucked partly into the bottom border
+  return new File([await c.convertToBlob({ type: 'image/png' })], `potscan-label-${id}.png`, { type: 'image/png' });
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Lowercase, accents removed: "Café" -> "cafe".
@@ -691,6 +714,7 @@ async function showLabels(from, to) {
   from = parseInt(from || await nextId(), 10);
   to = parseInt(to || from, 10);
   if (to < from) [from, to] = [to, from];
+  const canSharePng = !!navigator.canShare?.({ files: [new File([''], 'x.png', { type: 'image/png' })] });
 
   app.innerHTML = `
     <div class="no-print">
@@ -701,21 +725,68 @@ async function showLabels(from, to) {
         <div><label for="to">To</label><input id="to" inputmode="numeric" value="${to}"></div>
       </div>
       <button class="primary" id="print"></button>
-      <p class="muted">Use waterproof sticker paper, or laminate the labels. Each code prints about 4 cm wide.</p>
+      <div class="row actions">
+        ${canSharePng ? '<button id="shareall"></button>' : ''}
+        <button id="downloadall"></button>
+      </div>
+      <p class="msg" id="msg"></p>
+      <p class="muted">Tap a label to share or download it as a picture, e.g. to arrange in Canva.
+        Use waterproof sticker paper, or laminate the labels. Each code prints about 4 cm wide.</p>
     </div>
     <div class="sheet" id="sheet"></div>
+    <dialog id="labelview">
+      <img alt="">
+      ${canSharePng ? '<button class="primary" id="shareone">Share label</button>' : ''}
+      <button id="downloadone">Download label</button>
+      <button id="closelabel">Close</button>
+    </dialog>
   `;
   const fromEl = app.querySelector('#from'), toEl = app.querySelector('#to');
   const sheet = app.querySelector('#sheet'), printBtn = app.querySelector('#print');
+  const msg = app.querySelector('#msg');
+  let ids = [];
+
+  // PNGs are made in the background after each redraw, so Share works within Android's few-second window.
+  const pngs = new Map(); // id -> Promise<File>
+  const png = id => { if (!pngs.has(id)) pngs.set(id, labelPng(id)); return pngs.get(id); };
+  const download = file => Object.assign(document.createElement('a'), { href: blobUrl(file), download: file.name }).click();
+  const share = async files => {
+    try { await navigator.share({ files }); msg.textContent = ''; }
+    catch (e) { if (e.name !== 'AbortError') { msg.textContent = `Sharing didn't work (${e.name}). Tap again, or use Download.`; msg.classList.add('bad'); } }
+  };
+
+  const shareAll = app.querySelector('#shareall');
+  if (shareAll) shareAll.onclick = async () => share(await Promise.all(ids.map(png)));
+  app.querySelector('#downloadall').onclick = async () => {
+    for (const id of ids) { download(await png(id)); await new Promise(r => setTimeout(r, 250)); } // Chrome may ask to allow multiple downloads
+  };
+
+  const view = app.querySelector('#labelview');
+  sheet.onclick = async e => {
+    const id = e.target.closest('.label')?.dataset.id;
+    if (!id) return;
+    const file = await png(id);
+    view.querySelector('img').src = blobUrl(file);
+    const one = view.querySelector('#shareone');
+    if (one) one.onclick = () => share([file]);
+    view.querySelector('#downloadone').onclick = () => download(file);
+    view.showModal();
+  };
+  view.querySelector('#closelabel').onclick = () => view.close();
 
   // Redraws the sheet as the numbers are typed. replaceState keeps Back pointing at the previous screen.
   const render = () => {
     const f = parseInt(fromEl.value, 10);
     if (!(f >= 1)) return;
     const t = Math.min(Math.max(parseInt(toEl.value, 10) || f, f), f + 99); // at least one, at most 100
-    const ids = Array.from({ length: t - f + 1 }, (_, i) => padId(String(f + i)));
-    sheet.innerHTML = ids.map(id => `<div class="label">${qrSvg(id)}<div class="num">${id}</div></div>`).join('');
+    ids = Array.from({ length: t - f + 1 }, (_, i) => padId(String(f + i)));
+    sheet.innerHTML = ids.map(id =>
+      `<div class="label" role="button" tabindex="0" data-id="${id}">${qrSvg(id)}<div class="num">${id}</div></div>`).join('');
     printBtn.textContent = `Print ${plural(ids.length, 'label')}`;
+    const many = ids.length > 1 ? ` all ${ids.length}` : '';
+    if (shareAll) shareAll.textContent = `Share${many}`;
+    app.querySelector('#downloadall').textContent = `Download${many}`;
+    ids.forEach(png); // warm up in the background
     history.replaceState(null, '', `#/labels/${ids[0]}-${ids.at(-1)}`);
     here = location.hash;
   };

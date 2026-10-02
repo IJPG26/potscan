@@ -195,6 +195,7 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Two ways to work:
   - **One at a time:** Add a new tote → fill in → Save → Print label → stick it on.
   - **Batch:** Print labels 0001–0012 → stick them on totes → scan each → fill in.
+- **Labels as pictures (for Canva or printing elsewhere):** tapping a label opens it with **Share label** and **Download label**. **Share all / Download all** handle the whole range. Each is a PNG (`potscan-label-0012.png`, ~984×1181 px, ~40 KB): the QR is drawn square by square on a canvas (sharp at any size, 4-square white border kept), with the number underneath. PNGs are prepared in the background after each redraw so sharing stays within Android's activation window. Download all spaces the downloads 250 ms apart (Chrome may ask once to allow multiple downloads). Tested: PNGs for 0001, 0012 and 0999 decode to the exact URL at full size and at 300 px wide.
 - `#/new` picks the highest saved number + 1. It doesn't know about printed-but-unrecorded labels, so for batch work, scan the labels instead of using Add a new tote.
 
 ### 6.5 Photos
@@ -275,7 +276,7 @@ Three or four full-screen cards, skippable, reachable again from Help:
 | M3 | Photos and items | ✅ Tote and item photos, compression, thumbnails; items inside totes with Save & add another. Passed on-phone test. |
 | M4 | Search and list | ✅ Search across totes and items as you type; item results show tote and location; Recent / A–Z sort. Passed on-phone test. |
 | M5 | Offline and install | ✅ Caching service worker with update bar; works in airplane mode. Passed on-phone test. |
-| M6 | Backup | ✅ in code, awaiting on-phone test: export (share to Drive / download), merge-restore, reminder |
+| M6 | Backup | ✅ Export (share to Drive / download), merge-restore, reminder. Passed on-phone test (Drive sharing works as `.txt`). |
 | M7 | Polish | First-run guide, wording, any feedback from the father |
 | M8 | Field test | Labels printed; tested on the father's phone; father demo |
 
@@ -299,11 +300,14 @@ Three or four full-screen cards, skippable, reachable again from Help:
 - [x] After reloading once online, the green "Update ready" bar appears; tapping it refreshes
 - [x] Airplane mode: open PotScan from its icon, open a tote, add an item with a photo, search
 
-**On-device test checklist (M6)**
-- [ ] "Save backup to Google Drive…" appears and opens the share menu; saving to Drive works
-- [ ] Home's Backup button shows "last: today" afterwards
-- [ ] Delete a test item, restore the backup file from Drive → the item and its photo come back
-- [ ] Download backup file saves to Downloads
+**On-device test checklist (M6)**: passed
+- [x] "Save backup to Google Drive…" appears and opens the share menu; saving to Drive works
+- [x] Download backup file saves to Downloads; restore works
+
+**On-device test checklist (label pictures)**
+- [ ] Tap a label: Share label opens the share menu (Canva, Gallery, Drive…)
+- [ ] Download all saves one PNG per label
+- [ ] A shared PNG, printed or shown on another screen, scans with Lens
 
 **On-device test checklist (M8)**
 - [ ] Lens scan in normal and dim light

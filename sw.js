@@ -1,6 +1,6 @@
 // Offline app shell (CHARTER §6.7).
 // BUMP CACHE ON EVERY DEPLOY, or phones keep running the old files. The pre-commit hook checks this.
-const CACHE = 'potscan-v8';
+const CACHE = 'potscan-v9';
 const FILES = [
   './', 'index.html', 'app.js', 'style.css', 'qrcode.js',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
