@@ -274,7 +274,7 @@ function showPhotoResult(failed) {
 }
 
 // Photos of a tote or item, newest first. Only redraws the photo area, so unsaved form edits stay.
-async function renderPhotos(ownerId) {
+async function renderPhotos(ownerId, emptyText = 'No photos yet.') {
   const photos = (await photosOf(ownerId)).sort((a, b) => b.takenAt - a.takenAt);
   const box = app.querySelector('#photos');
   if (!box) return; // left the screen meanwhile
@@ -284,7 +284,7 @@ async function renderPhotos(ownerId) {
           <img src="${blobUrl(ph.blob)}" alt="" loading="lazy">
           <figcaption>${fmtDate(ph.takenAt)}</figcaption>
         </figure>`).join('')
-    : '<p class="muted">No photos yet.</p>';
+    : `<p class="muted">${emptyText}</p>`;
 
   const viewer = app.querySelector('#viewer');
   for (const fig of box.querySelectorAll('.photo')) fig.onclick = () => {
@@ -295,7 +295,7 @@ async function renderPhotos(ownerId) {
       if (!confirm('Delete this photo?')) return;
       await deletePhoto(ph.id);
       viewer.close();
-      renderPhotos(ownerId);
+      renderPhotos(ownerId, emptyText);
     };
     viewer.showModal();
   };
@@ -507,33 +507,37 @@ async function showLabels(from, to) {
   from = parseInt(from || await nextId(), 10);
   to = parseInt(to || from, 10);
   if (to < from) [from, to] = [to, from];
-  to = Math.min(to, from + 99); // keep a sheet printable
 
-  const ids = Array.from({ length: to - from + 1 }, (_, i) => padId(String(from + i)));
   app.innerHTML = `
     <div class="no-print">
       <a class="btn" href="#/">← Back to My Totes</a>
       <h1>Print labels</h1>
-      <form id="range">
-        <div class="row">
-          <div><label for="from">From</label><input id="from" inputmode="numeric" value="${from}"></div>
-          <div><label for="to">To</label><input id="to" inputmode="numeric" value="${to}"></div>
-        </div>
-        <button>Show labels</button>
-      </form>
-      <button class="primary" id="print">Print ${plural(ids.length, 'label')}</button>
+      <div class="row">
+        <div><label for="from">From</label><input id="from" inputmode="numeric" value="${from}"></div>
+        <div><label for="to">To</label><input id="to" inputmode="numeric" value="${to}"></div>
+      </div>
+      <button class="primary" id="print"></button>
       <p class="muted">Use waterproof sticker paper, or laminate the labels. Each code prints about 4 cm wide.</p>
     </div>
-    <div class="sheet">${ids.map(id => `
-      <div class="label">${qrSvg(id)}<div class="num">${id}</div></div>`).join('')}
-    </div>
+    <div class="sheet" id="sheet"></div>
   `;
-  app.querySelector('#range').onsubmit = e => {
-    e.preventDefault();
-    const f = padId(app.querySelector('#from').value), t = padId(app.querySelector('#to').value) || f;
-    if (f) location.hash = `#/labels/${f}-${t}`;
+  const fromEl = app.querySelector('#from'), toEl = app.querySelector('#to');
+  const sheet = app.querySelector('#sheet'), printBtn = app.querySelector('#print');
+
+  // Redraws the sheet as the numbers are typed. replaceState keeps Back pointing at the previous screen.
+  const render = () => {
+    const f = parseInt(fromEl.value, 10);
+    if (!(f >= 1)) return;
+    const t = Math.min(Math.max(parseInt(toEl.value, 10) || f, f), f + 99); // at least one, at most 100
+    const ids = Array.from({ length: t - f + 1 }, (_, i) => padId(String(f + i)));
+    sheet.innerHTML = ids.map(id => `<div class="label">${qrSvg(id)}<div class="num">${id}</div></div>`).join('');
+    printBtn.textContent = `Print ${plural(ids.length, 'label')}`;
+    history.replaceState(null, '', `#/labels/${ids[0]}-${ids.at(-1)}`);
+    here = location.hash;
   };
-  app.querySelector('#print').onclick = () => print();
+  fromEl.oninput = toEl.oninput = render;
+  printBtn.onclick = () => print();
+  render();
 }
 
 async function showTote(id) {
@@ -581,6 +585,7 @@ async function showTote(id) {
     ${tote ? `
       <h2>Photos of the tote</h2>
       ${photoSectionHtml}
+      <h2>Label and tote</h2>
       <a class="btn" href="#/labels/${esc(id)}">Print label</a>
       <button class="danger" id="del">Delete this tote</button>`
     : '<p class="muted">Save the tote first, then you can add items and photos.</p>'}
@@ -607,12 +612,13 @@ async function showTote(id) {
   };
 
   if (!tote) return;
-  renderPhotos(id);
+  const noTotePhotos = 'No photos of the tote itself yet. Item photos are inside each item.';
+  renderPhotos(id, noTotePhotos);
   onPhotosPicked(async files => {
     const failed = await savePhotos(id, files);
     await touchTote(id);
     showPhotoResult(failed);
-    renderPhotos(id);
+    renderPhotos(id, noTotePhotos);
   });
 
   app.querySelector('#del').onclick = async () => {
