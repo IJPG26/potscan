@@ -390,8 +390,10 @@ async function showHome() {
       </div>
       <ul class="list" id="totes"></ul>`
       : '<p class="muted">No totes yet. Tap “Add a new tote” to start.</p>'}
+    <p class="muted about" id="about"></p>
     </div>
   `;
+  showAbout();
 
   const listEl = app.querySelector('#totes');
   const renderList = sort => {
@@ -433,6 +435,20 @@ async function showHome() {
     if (id) location.hash = '#/tote/' + id;
     else alert('Please type the number printed on the label.');
   };
+}
+
+// "Version 2 · Chrome · installed app". Each browser keeps its own data, so this tells at a glance
+// whether PotScan is running where the records are (CHARTER §6.2).
+async function showAbout() {
+  const ua = navigator.userAgent;
+  const browser = /OPR\/|Opera/.test(ua) ? 'Opera' : /MiuiBrowser|XiaoMi/.test(ua) ? 'Mi Browser'
+    : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /EdgA?\//.test(ua) ? 'Edge'
+    : /Chrome\//.test(ua) ? 'Chrome' : 'another browser';
+  const mode = matchMedia('(display-mode: standalone)').matches ? 'installed app' : 'browser tab';
+  const keys = await caches?.keys().catch(() => []) ?? [];
+  const version = keys.find(k => k.startsWith('potscan-v'))?.slice('potscan-v'.length) ?? '–';
+  const el = document.getElementById('about');
+  if (el) el.textContent = `Version ${version} · ${browser} · ${mode}`;
 }
 
 async function showScan() {

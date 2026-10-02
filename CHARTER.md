@@ -219,7 +219,8 @@ Manual entry uses a number keypad (`inputmode="numeric"`) and zero-pads the inpu
 - Install downloads with `cache: 'reload'`, so GitHub Pages' 10-minute HTTP cache can't put stale files into a new version.
 - **Update flow:** a new version installs in the background and **waits**. The page shows a green **"Update ready, tap to refresh"** bar. Tapping it tells the worker to `skipWaiting`, and the page reloads on `controllerchange`. Nothing reloads in the middle of editing, and the first install never reloads.
 - The app checks for updates on launch and whenever it comes back to the screen (`visibilitychange` → `reg.update()`), since an installed app can stay open for days.
-- **Deploy checklist:** bump `CACHE` in `sw.js` on every deploy that changes app files. A local git `pre-commit` hook (`.git/hooks/pre-commit`, not in the repo) blocks commits that change app files without the bump.
+- **Deploy checklist:** bump `CACHE` in `sw.js` on every deploy that changes app files, and **never reuse a number** (a browser that already has that version keeps its old files).
+- Home shows **"Version N · <browser> · installed app / browser tab"** at the bottom. This is for support: if records seem missing, it shows at a glance whether PotScan is running in the browser that holds them (§6.2). A local git `pre-commit` hook (`.git/hooks/pre-commit`, not in the repo) blocks commits that change app files without the bump.
 - Tested: the update bar and switch-over (passthrough → v1 and v1 → v2, old cache deleted, data intact); with the server stopped, the app opened, added an item with a photo, searched and printed labels.
 
 ### 6.8 Simple use for a non-technical user
